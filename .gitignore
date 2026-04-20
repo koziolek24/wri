@@ -1,0 +1,6 @@
+output.txt
+skrypt.py
+__pycache__/
+venv/
+*.pyc
+*.pyo
