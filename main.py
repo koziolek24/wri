@@ -22,13 +22,13 @@ def main():
     try:
         while True:
             hello()
-            left_speed, right_speed = random.choice(movements)
-            duration = random.uniform(0.4, 1.5)
+            left_speed, right_speed = (100,-100)
+            # duration = random.uniform(0.4, 1.5)
 
             tank.on(left_speed, right_speed)
-            time.sleep(duration)
-            tank.off()
-            time.sleep(0.2)
+            # time.sleep(duration)
+            # tank.off()
+            # time.sleep(0.2)
     except KeyboardInterrupt:
         tank.off()
 
