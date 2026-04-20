@@ -9,7 +9,11 @@ from ev3dev2.led import Leds
 
 if __name__ == "__main__":
     m = LargeMotor(OUTPUT_A)
+    r = LargeMotor(OUTPUT_B)
     while True:
         hello()
-        m.on_for_rotations(SpeedPercent(75), 5)
+        m.on_for_rotations(SpeedPercent(100), 5)
+        time.sleep(1)
+
+        r.on_for_rotations(SpeedPercent(100), 5)
         time.sleep(1)
