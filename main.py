@@ -1,19 +1,37 @@
-from facade import hello
-
+import random
 import time
 
-from ev3dev2.motor import LargeMotor, OUTPUT_A, OUTPUT_B, SpeedPercent, MoveTank
-from ev3dev2.sensor import INPUT_1
-from ev3dev2.sensor.lego import TouchSensor
-from ev3dev2.led import Leds
+from facade import hello
+from ev3dev2.motor import MoveTank, OUTPUT_A, OUTPUT_B
+
+
+def main():
+    tank = MoveTank(OUTPUT_A, OUTPUT_B)
+
+    movements = [
+        (100, 100),
+        (-100, -100),
+        (100, -100),
+        (-100, 100),
+        (100, 40),
+        (40, 100),
+        (-100, -40),
+        (-40, -100),
+    ]
+
+    try:
+        while True:
+            hello()
+            left_speed, right_speed = random.choice(movements)
+            duration = random.uniform(0.4, 1.5)
+
+            tank.on(left_speed, right_speed)
+            time.sleep(duration)
+            tank.off()
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        tank.off()
+
 
 if __name__ == "__main__":
-    m = LargeMotor(OUTPUT_A)
-    r = LargeMotor(OUTPUT_B)
-    while True:
-        hello()
-        m.on_for_rotations(SpeedPercent(100), 5)
-        time.sleep(1)
-
-        r.on_for_rotations(SpeedPercent(100), 5)
-        time.sleep(1)
+    main()
