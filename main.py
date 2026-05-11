@@ -39,19 +39,19 @@ SERVO_INTERVAL = 0.1
 
 
 def wait(interval=0.05):
-    """Zatrzymuje robota na podany czas w sekundach."""
+    """Pauses program execution for the given number of seconds."""
 
     time.sleep(interval)
 
 
 def read_color_name(color_sensor):
-    """Zamienia kod koloru z czujnika EV3 na nazwę używaną w logice programu."""
+    """Converts the EV3 color sensor code into a color name used by the program logic."""
 
     return COLOR_NAMES.get(color_sensor.color, COLOR_OTHER)
 
 
 def get_changed_color(color_sensor, previous_color):
-    """Zwraca nowy kolor tylko wtedy, gdy różni się od poprzednio zapamiętanego."""
+    """Returns the new color only when it differs from the previously stored color."""
 
     current_color = read_color_name(color_sensor)
 
@@ -62,7 +62,7 @@ def get_changed_color(color_sensor, previous_color):
 
 
 def update_last_color(color_sensor, previous_color):
-    """Aktualizuje ostatnio zapamiętany kolor dla pojedynczego czujnika."""
+    """Updates the last stored color for a single color sensor."""
 
     changed_color = get_changed_color(color_sensor, previous_color)
 
@@ -73,7 +73,7 @@ def update_last_color(color_sensor, previous_color):
 
 
 def read_sensor_colors(left_color_sensor, right_color_sensor, last_left_color, last_right_color):
-    """Odczytuje i aktualizuje ostatnie kolory widziane przez lewy oraz prawy czujnik."""
+    """Reads and updates the last colors detected by the left and right color sensors."""
 
     current_left_color = update_last_color(left_color_sensor, last_left_color)
     current_right_color = update_last_color(right_color_sensor, last_right_color)
@@ -82,7 +82,7 @@ def read_sensor_colors(left_color_sensor, right_color_sensor, last_left_color, l
 
 
 def move_grabber_up(servo):
-    """Podnosi manipulator przez krótki ruch silnika średniego."""
+    """Raises the grabber by briefly running the medium motor."""
 
     servo.on(60)
     wait(0.1)
@@ -90,7 +90,7 @@ def move_grabber_up(servo):
 
 
 def move_grabber_down(servo):
-    """Opuszcza manipulator przez krótki ruch silnika średniego."""
+    """Lowers the grabber by briefly running the medium motor."""
 
     servo.on(-80)
     wait(0.05)
@@ -98,20 +98,20 @@ def move_grabber_down(servo):
 
 
 def drive(tank, movement_name):
-    """Uruchamia silniki według wybranego ruchu z konfiguracji MOVEMENTS."""
+    """Runs the drive motors using the selected movement from the MOVEMENTS configuration."""
 
     left_speed, right_speed = MOVEMENTS[movement_name]
     tank.on(left_speed, right_speed)
 
 
 def sees_color(left_color, right_color, expected_color):
-    """Sprawdza, czy którykolwiek z czujników widzi oczekiwany kolor."""
+    """Checks whether any color sensor sees the expected color."""
 
     return left_color == expected_color or right_color == expected_color
 
 
 def get_line_movement(left_color, right_color):
-    """Dobiera ruch robota na podstawie kolorów widzianych przez czujniki linii."""
+    """Selects the robot movement based on the colors detected by the line sensors."""
 
     if left_color == COLOR_WHITE and right_color == COLOR_WHITE:
         return MOVE_FORWARD
@@ -133,7 +133,7 @@ def get_line_movement(left_color, right_color):
 
 
 def handle_color_action(tank, servo, left_color, right_color):
-    """Obsługuje reakcję manipulatora na kolory specjalne."""
+    """Handles the grabber reaction to special colors."""
 
     if sees_color(left_color, right_color, COLOR_GREEN):
         drive(tank, MOVE_FORWARD)
@@ -155,7 +155,7 @@ def handle_color_action(tank, servo, left_color, right_color):
 
 
 def follow_line_step(tank, left_color, right_color):
-    """Wykonuje pojedynczy krok podążania po linii."""
+    """Performs a single line-following step."""
 
     movement_name = get_line_movement(left_color, right_color)
     drive(tank, movement_name)
