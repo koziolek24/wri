@@ -1,125 +1,195 @@
-import random
 import time
 
 from ev3dev2.motor import MoveTank, OUTPUT_A, OUTPUT_B, OUTPUT_D, MediumMotor
 from ev3dev2.sensor import INPUT_1, INPUT_2
-from ev3dev2.sensor.lego import TouchSensor, ColorSensor
-from ev3dev2.led import Leds
+from ev3dev2.sensor.lego import ColorSensor
 
-def colorChange(colorSensor):
-    if colorSensor.color == 1:
-        return "Black"
-    if colorSensor.color == 5:
-        return "Red"
-    if colorSensor.color == 6:
-        return "White"
-    if colorSensor.color == 3:
-        return "Green"
-    if colorSensor.color == 5:
-        return "Green"
-    return "Other"
 
-def detect_color(colorSensor, oldColor, side):
-    colorNew = colorChange(colorSensor)
-    if colorNew == oldColor:
-        return None
-    return colorNew
+COLOR_BLACK = "Black"
+COLOR_GREEN = "Green"
+COLOR_RED = "Red"
+COLOR_WHITE = "White"
+COLOR_OTHER = "Other"
+
+COLOR_NAMES = {
+    1: COLOR_BLACK,
+    3: COLOR_GREEN,
+    5: COLOR_RED,
+    6: COLOR_WHITE,
+}
+
+MOVE_FORWARD = "forward"
+MOVE_BACKWARD = "backward"
+MOVE_HARD_LEFT = "hard_left"
+MOVE_HARD_RIGHT = "hard_right"
+MOVE_SOFT_RIGHT = "soft_right"
+MOVE_SOFT_LEFT = "soft_left"
+
+MOVEMENTS = {
+    MOVE_FORWARD: (25, 25),
+    MOVE_BACKWARD: (-25, -25),
+    MOVE_HARD_LEFT: (25, -25),
+    MOVE_HARD_RIGHT: (-25, 25),
+    MOVE_SOFT_RIGHT: (0, -25),
+    MOVE_SOFT_LEFT: (-25, 0),
+}
+
+DEFAULT_INTERVAL = 0.0
+SERVO_INTERVAL = 0.1
+
 
 def wait(interval=0.05):
+    """Zatrzymuje robota na podany czas w sekundach."""
+
     time.sleep(interval)
 
-def moveUp(servo):
+
+def read_color_name(color_sensor):
+    """Zamienia kod koloru z czujnika EV3 na nazwę używaną w logice programu."""
+
+    return COLOR_NAMES.get(color_sensor.color, COLOR_OTHER)
+
+
+def get_changed_color(color_sensor, previous_color):
+    """Zwraca nowy kolor tylko wtedy, gdy różni się od poprzednio zapamiętanego."""
+
+    current_color = read_color_name(color_sensor)
+
+    if current_color == previous_color:
+        return None
+
+    return current_color
+
+
+def update_last_color(color_sensor, previous_color):
+    """Aktualizuje ostatnio zapamiętany kolor dla pojedynczego czujnika."""
+
+    changed_color = get_changed_color(color_sensor, previous_color)
+
+    if changed_color is None:
+        return previous_color
+
+    return changed_color
+
+
+def read_sensor_colors(left_color_sensor, right_color_sensor, last_left_color, last_right_color):
+    """Odczytuje i aktualizuje ostatnie kolory widziane przez lewy oraz prawy czujnik."""
+
+    current_left_color = update_last_color(left_color_sensor, last_left_color)
+    current_right_color = update_last_color(right_color_sensor, last_right_color)
+
+    return current_left_color, current_right_color
+
+
+def move_grabber_up(servo):
+    """Podnosi manipulator przez krótki ruch silnika średniego."""
+
     servo.on(60)
     wait(0.1)
     servo.off()
 
-def moveDown(servo):
+
+def move_grabber_down(servo):
+    """Opuszcza manipulator przez krótki ruch silnika średniego."""
+
     servo.on(-80)
     wait(0.05)
     servo.off()
 
+
+def drive(tank, movement_name):
+    """Uruchamia silniki według wybranego ruchu z konfiguracji MOVEMENTS."""
+
+    left_speed, right_speed = MOVEMENTS[movement_name]
+    tank.on(left_speed, right_speed)
+
+
+def sees_color(left_color, right_color, expected_color):
+    """Sprawdza, czy którykolwiek z czujników widzi oczekiwany kolor."""
+
+    return left_color == expected_color or right_color == expected_color
+
+
+def get_line_movement(left_color, right_color):
+    """Dobiera ruch robota na podstawie kolorów widzianych przez czujniki linii."""
+
+    if left_color == COLOR_WHITE and right_color == COLOR_WHITE:
+        return MOVE_FORWARD
+
+    if left_color == COLOR_WHITE and right_color == COLOR_BLACK:
+        print("lewo")
+        return MOVE_SOFT_RIGHT
+
+    if left_color == COLOR_BLACK and right_color == COLOR_WHITE:
+        print("prawo")
+        return MOVE_SOFT_LEFT
+
+    if left_color == COLOR_BLACK and right_color == COLOR_BLACK:
+        print("prosto")
+        return MOVE_FORWARD
+
+    print("prosto")
+    return MOVE_FORWARD
+
+
+def handle_color_action(tank, servo, left_color, right_color):
+    """Obsługuje reakcję manipulatora na kolory specjalne."""
+
+    if sees_color(left_color, right_color, COLOR_GREEN):
+        drive(tank, MOVE_FORWARD)
+        wait(0.005)
+        move_grabber_up(servo)
+        drive(tank, MOVE_BACKWARD)
+        wait(0.01)
+        return True
+
+    if sees_color(left_color, right_color, COLOR_RED):
+        drive(tank, MOVE_FORWARD)
+        wait(0.005)
+        move_grabber_down(servo)
+        drive(tank, MOVE_BACKWARD)
+        wait(0.01)
+        return True
+
+    return False
+
+
+def follow_line_step(tank, left_color, right_color):
+    """Wykonuje pojedynczy krok podążania po linii."""
+
+    movement_name = get_line_movement(left_color, right_color)
+    drive(tank, movement_name)
+    wait(DEFAULT_INTERVAL)
+
+
 def main():
     tank = MoveTank(OUTPUT_A, OUTPUT_B)
     servo = MediumMotor(OUTPUT_D)
-    colorSensorLeft = ColorSensor(INPUT_2)
-    colorSensorRight = ColorSensor(INPUT_1)
-    movements = [
-        (15, 15), # 0 prosto
-        (-50, 50), # 1 do tylu
-        (15, -15), # 2 mocno w lewo
-        (-15, 0), # 3 mocno w prawo
-        (0, -25), # 4 lekko w prawo
-        (-25, 0), # 5 lekko w lewo
-    ]
+
+    left_color_sensor = ColorSensor(INPUT_2)
+    right_color_sensor = ColorSensor(INPUT_1)
+
+    last_left_color = COLOR_OTHER
+    last_right_color = COLOR_OTHER
 
     try:
-        lastLeft = -1
-        lastRight = -1
-        moveID = 0
-        interval = 0.02
         print("Starting")
-        moveDown(servo)
-        while True:
-            # duration = random.uniform(0.4, 1.5)
-            shouldUp = 0
-            shouldDown = 0
-            useServo = False
+        move_grabber_down(servo)
 
-            changeLeft = detect_color(colorSensorLeft, lastLeft, "left")
-            if changeLeft:
-                lastLeft = changeLeft
-            changeRight = detect_color(colorSensorRight, lastRight, "right")
-            if changeRight:
-                lastRight = changeRight
-            
-            if lastLeft == "White" and lastRight == "White":
-                interval = 0.0
-                moveID = 0
-            elif lastLeft == "White" and lastRight == "Black":
-                interval = 0.0
-                moveID = 4
-                print("lewo")
-            elif lastLeft == "Black" and lastRight == "White":
-                interval = 0.0
-                moveID = 5
-                print("prawo")
-            elif lastLeft == "Black" and lastRight == "Black":
-                interval = 0.0
-                moveID = 0
-                print("prosto")
-            elif lastLeft == "Green" or lastRight == "Green":
-                useServo = True
-                interval = 0.1
-                moveID = 0
-                shouldUp = 1
-            elif lastLeft == "Red" or lastRight == "Red":
-                useServo = True
-                interval = 0.1
-                moveID = 0
-                shouldDown = 1
-            else:
-                interval = 0.0
-                moveId = 0
-                print("prosto")
-            if useServo is False:
-                left_speed, right_speed = movements[moveID]
-                tank.on(left_speed, right_speed)
-                wait(interval)
-            else:
-                tank.on(left_speed, right_speed)
-                wait(0.005)
-                if shouldUp:
-                    moveUp(servo)
-                    left_speed, right_speed = movements[1]
-                    tank.on(left_speed, right_speed)
-                    wait(0.01)
-                if shouldDown:
-                    moveDown(servo)
-                    left_speed, right_speed = movements[1]
-                    tank.on(left_speed, right_speed)
-                    wait(0.01)
+        while True:
+            last_left_color, last_right_color = read_sensor_colors(left_color_sensor, right_color_sensor, last_left_color, last_right_color)
+
+            action_handled = handle_color_action(tank, servo, last_left_color, last_right_color)
+
+            if action_handled:
+                wait(SERVO_INTERVAL)
+                continue
+
+            follow_line_step(tank, last_left_color, last_right_color)
+
     except KeyboardInterrupt:
         tank.off()
+        servo.off()
 
 
 if __name__ == "__main__":
