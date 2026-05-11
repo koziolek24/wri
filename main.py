@@ -60,12 +60,10 @@ PICKUP_TILE_MAX_FORWARD_TIME = 3.00
 RETURN_TILE_MAX_FORWARD_TIME = 4.00
 TILE_LEFT_CONFIRM_READS = 3
 
-GRABBER_LEVEL_DOWN_SPEED = -80
-GRABBER_LEVEL_DOWN_TIME = 0.20
-GRABBER_LEVEL_UP_SPEED = 60
-GRABBER_LEVEL_UP_TIME = 0.08
-GRABBER_LIFT_SPEED = 80
-GRABBER_LIFT_TIME = 0.20
+GRABBER_DOWN_SPEED = -80
+GRABBER_DOWN_TIME = 0.30
+GRABBER_UP_SPEED = 80
+GRABBER_UP_TIME = 0.35
 
 
 def debug(message):
@@ -173,23 +171,19 @@ def turn_to_pickup_branch(tank, branch_side):
         return
 
 
-def level_grabber_for_pickup(servo):
-    """Moves the grabber to a repeatable pickup height using a timed down and up sequence."""
+def move_grabber_down_to_limit(servo):
+    """Moves the grabber down until it reaches the mechanical lower limit."""
 
-    servo.on(GRABBER_LEVEL_DOWN_SPEED)
-    wait(GRABBER_LEVEL_DOWN_TIME)
-    servo.off()
-
-    servo.on(GRABBER_LEVEL_UP_SPEED)
-    wait(GRABBER_LEVEL_UP_TIME)
+    servo.on(GRABBER_DOWN_SPEED)
+    wait(GRABBER_DOWN_TIME)
     servo.off()
 
 
-def lift_grabber_with_object(servo):
-    """Raises the grabber after crossing the pickup tile."""
+def move_grabber_up_to_limit(servo):
+    """Moves the grabber up until it reaches the mechanical upper limit."""
 
-    servo.on(GRABBER_LIFT_SPEED)
-    wait(GRABBER_LIFT_TIME)
+    servo.on(GRABBER_UP_SPEED)
+    wait(GRABBER_UP_TIME)
     servo.off()
 
 
@@ -234,7 +228,7 @@ def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor
     debug("pickup tile procedure started")
 
     stop(tank)
-    level_grabber_for_pickup(servo)
+    move_grabber_down_to_limit(servo)
 
     drive_forward_until_tile_crossed(
         tank,
@@ -245,7 +239,7 @@ def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor
         PICKUP_TILE_MAX_FORWARD_TIME,
     )
 
-    lift_grabber_with_object(servo)
+    move_grabber_up_to_limit(servo)
     rotate_around(tank)
 
     drive_forward_until_tile_crossed(
@@ -317,7 +311,7 @@ def main():
 
     try:
         print("Starting")
-        level_grabber_for_pickup(servo)
+        move_grabber_down_to_limit(servo)
 
         while True:
             left_color, right_color = read_sensor_colors(left_color_sensor, right_color_sensor)
