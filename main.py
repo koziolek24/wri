@@ -20,6 +20,17 @@ COLOR_NAMES = {
     6: COLOR_WHITE,
 }
 
+PICKUP_COLOR = COLOR_GREEN
+
+STATE_FOLLOW_MAIN_LINE = "follow_main_line"
+STATE_APPROACH_PICKUP_TILE = "approach_pickup_tile"
+STATE_PICKUP_TILE_PROCEDURE = "pickup_tile_procedure"
+STATE_REACQUIRE_LINE = "reacquire_line"
+
+SIDE_LEFT = "left"
+SIDE_RIGHT = "right"
+SIDE_NONE = "none"
+
 MOVE_FORWARD = "forward"
 MOVE_ROTATE = "rotate"
 MOVE_HARD_LEFT = "hard_left"
@@ -37,7 +48,24 @@ MOVEMENTS = {
 }
 
 DEFAULT_INTERVAL = 0.01
-SERVO_INTERVAL = 0.1
+REACQUIRE_INTERVAL = 0.01
+TILE_DRIVE_INTERVAL = 0.01
+
+BRANCH_TURN_TIME = 0.25
+TURN_AROUND_TIME = 0.85
+PICKUP_MARKER_IGNORE_TIME = 0.40
+
+PICKUP_TILE_MIN_FORWARD_TIME = 0.35
+PICKUP_TILE_MAX_FORWARD_TIME = 3.00
+RETURN_TILE_MAX_FORWARD_TIME = 4.00
+TILE_LEFT_CONFIRM_READS = 3
+
+GRABBER_LEVEL_DOWN_SPEED = -80
+GRABBER_LEVEL_DOWN_TIME = 0.20
+GRABBER_LEVEL_UP_SPEED = 60
+GRABBER_LEVEL_UP_TIME = 0.08
+GRABBER_LIFT_SPEED = 80
+GRABBER_LIFT_TIME = 0.20
 
 
 def debug(message):
@@ -59,51 +87,10 @@ def read_color_name(color_sensor):
     return COLOR_NAMES.get(color_sensor.color, COLOR_OTHER)
 
 
-def get_changed_color(color_sensor, previous_color):
-    """Returns the new color only when it differs from the previously stored color."""
+def read_sensor_colors(left_color_sensor, right_color_sensor):
+    """Reads current colors detected by the left and right color sensors."""
 
-    current_color = read_color_name(color_sensor)
-
-    if current_color == previous_color:
-        return None
-
-    return current_color
-
-
-def update_last_color(color_sensor, previous_color):
-    """Updates the last stored color for a single color sensor."""
-
-    changed_color = get_changed_color(color_sensor, previous_color)
-
-    if changed_color is None:
-        return previous_color
-
-    return changed_color
-
-
-def read_sensor_colors(left_color_sensor, right_color_sensor, last_left_color, last_right_color):
-    """Reads and updates the last colors detected by the left and right color sensors."""
-
-    current_left_color = update_last_color(left_color_sensor, last_left_color)
-    current_right_color = update_last_color(right_color_sensor, last_right_color)
-
-    return current_left_color, current_right_color
-
-
-def move_grabber_up(servo):
-    """Raises the grabber by briefly running the medium motor."""
-
-    servo.on(60)
-    wait(0.1)
-    servo.off()
-
-
-def move_grabber_down(servo):
-    """Lowers the grabber by briefly running the medium motor."""
-
-    servo.on(-80)
-    wait(0.05)
-    servo.off()
+    return read_color_name(left_color_sensor), read_color_name(right_color_sensor)
 
 
 def drive(tank, movement_name):
@@ -113,10 +100,28 @@ def drive(tank, movement_name):
     tank.on(left_speed, right_speed)
 
 
+def stop(tank):
+    """Stops the drive motors."""
+
+    tank.off()
+
+
 def sees_color(left_color, right_color, expected_color):
     """Checks whether any color sensor sees the expected color."""
 
     return left_color == expected_color or right_color == expected_color
+
+
+def get_color_side(left_color, right_color, expected_color):
+    """Returns the side where exactly one sensor sees the expected color."""
+
+    if left_color == expected_color and right_color != expected_color:
+        return SIDE_LEFT
+
+    if right_color == expected_color and left_color != expected_color:
+        return SIDE_RIGHT
+
+    return SIDE_NONE
 
 
 def get_line_movement(left_color, right_color):
@@ -142,34 +147,161 @@ def get_line_movement(left_color, right_color):
     return MOVE_FORWARD
 
 
-def handle_color_action(tank, servo, left_color, right_color):
-    """Handles the grabber reaction to special colors."""
-
-    if sees_color(left_color, right_color, COLOR_GREEN):
-        drive(tank, MOVE_FORWARD)
-        wait(0.005)
-        move_grabber_up(servo)
-        drive(tank, MOVE_ROTATE)
-        wait(0.01)
-        return True
-
-    if sees_color(left_color, right_color, COLOR_RED):
-        drive(tank, MOVE_FORWARD)
-        wait(0.005)
-        move_grabber_down(servo)
-        drive(tank, MOVE_ROTATE)
-        wait(0.01)
-        return True
-
-    return False
-
-
 def follow_line_step(tank, left_color, right_color):
     """Performs a single line-following step."""
 
     movement_name = get_line_movement(left_color, right_color)
     drive(tank, movement_name)
     wait(DEFAULT_INTERVAL)
+
+
+def turn_to_pickup_branch(tank, branch_side):
+    """Turns the robot into the pickup branch based on the side of the pickup marker."""
+
+    if branch_side == SIDE_LEFT:
+        debug("turn to left pickup branch")
+        drive(tank, MOVE_HARD_LEFT)
+        wait(BRANCH_TURN_TIME)
+        stop(tank)
+        return
+
+    if branch_side == SIDE_RIGHT:
+        debug("turn to right pickup branch")
+        drive(tank, MOVE_HARD_RIGHT)
+        wait(BRANCH_TURN_TIME)
+        stop(tank)
+        return
+
+
+def level_grabber_for_pickup(servo):
+    """Moves the grabber to a repeatable pickup height using a timed down and up sequence."""
+
+    servo.on(GRABBER_LEVEL_DOWN_SPEED)
+    wait(GRABBER_LEVEL_DOWN_TIME)
+    servo.off()
+
+    servo.on(GRABBER_LEVEL_UP_SPEED)
+    wait(GRABBER_LEVEL_UP_TIME)
+    servo.off()
+
+
+def lift_grabber_with_object(servo):
+    """Raises the grabber after crossing the pickup tile."""
+
+    servo.on(GRABBER_LIFT_SPEED)
+    wait(GRABBER_LIFT_TIME)
+    servo.off()
+
+
+def rotate_around(tank):
+    """Rotates the robot in place for a calibrated 180 degree turn."""
+
+    drive(tank, MOVE_ROTATE)
+    wait(TURN_AROUND_TIME)
+    stop(tank)
+
+
+def drive_forward_until_tile_crossed(tank, left_color_sensor, right_color_sensor, expected_color, min_time, max_time):
+    """Drives forward until the expected tile color is detected and then left again."""
+
+    start_time = time.time()
+    color_was_seen = False
+    lost_reads = 0
+
+    while time.time() - start_time < max_time:
+        drive(tank, MOVE_FORWARD)
+
+        left_color, right_color = read_sensor_colors(left_color_sensor, right_color_sensor)
+        elapsed_time = time.time() - start_time
+
+        if sees_color(left_color, right_color, expected_color):
+            color_was_seen = True
+            lost_reads = 0
+        elif color_was_seen and elapsed_time >= min_time:
+            lost_reads += 1
+
+        if color_was_seen and lost_reads >= TILE_LEFT_CONFIRM_READS:
+            break
+
+        wait(TILE_DRIVE_INTERVAL)
+
+    stop(tank)
+
+
+def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor):
+    """Runs the complete pickup sequence on the colored pickup tile."""
+
+    debug("pickup tile procedure started")
+
+    stop(tank)
+    level_grabber_for_pickup(servo)
+
+    drive_forward_until_tile_crossed(
+        tank,
+        left_color_sensor,
+        right_color_sensor,
+        PICKUP_COLOR,
+        PICKUP_TILE_MIN_FORWARD_TIME,
+        PICKUP_TILE_MAX_FORWARD_TIME,
+    )
+
+    lift_grabber_with_object(servo)
+    rotate_around(tank)
+
+    drive_forward_until_tile_crossed(
+        tank,
+        left_color_sensor,
+        right_color_sensor,
+        PICKUP_COLOR,
+        PICKUP_TILE_MIN_FORWARD_TIME,
+        RETURN_TILE_MAX_FORWARD_TIME,
+    )
+
+    debug("pickup tile procedure finished")
+
+
+def handle_follow_main_line_state(tank, left_color, right_color, has_object):
+    """Handles line following on the main route and detects the pickup branch marker."""
+
+    if has_object:
+        follow_line_step(tank, left_color, right_color)
+        return STATE_FOLLOW_MAIN_LINE, None
+
+    branch_side = get_color_side(left_color, right_color, PICKUP_COLOR)
+
+    if branch_side != SIDE_NONE:
+        turn_to_pickup_branch(tank, branch_side)
+        return STATE_APPROACH_PICKUP_TILE, time.time()
+
+    follow_line_step(tank, left_color, right_color)
+    return STATE_FOLLOW_MAIN_LINE, None
+
+
+def handle_approach_pickup_tile_state(tank, left_color, right_color, approach_started_at):
+    """Handles the route between the pickup branch marker and the pickup tile."""
+
+    can_detect_pickup_tile = time.time() - approach_started_at >= PICKUP_MARKER_IGNORE_TIME
+
+    if can_detect_pickup_tile and sees_color(left_color, right_color, PICKUP_COLOR):
+        stop(tank)
+        return STATE_PICKUP_TILE_PROCEDURE
+
+    follow_line_step(tank, left_color, right_color)
+    return STATE_APPROACH_PICKUP_TILE
+
+
+def handle_reacquire_line_state(tank, left_color, right_color):
+    """Drives forward until the black line is detected again."""
+
+    if sees_color(left_color, right_color, COLOR_BLACK):
+        debug("line reacquired")
+        stop(tank)
+        return STATE_FOLLOW_MAIN_LINE
+
+    drive(tank, MOVE_FORWARD)
+    wait(REACQUIRE_INTERVAL)
+
+    return STATE_REACQUIRE_LINE
 
 
 def main():
@@ -179,26 +311,43 @@ def main():
     left_color_sensor = ColorSensor(INPUT_2)
     right_color_sensor = ColorSensor(INPUT_1)
 
-    last_left_color = COLOR_OTHER
-    last_right_color = COLOR_OTHER
+    state = STATE_FOLLOW_MAIN_LINE
+    has_object = False
+    approach_started_at = 0.0
 
     try:
         print("Starting")
-        move_grabber_down(servo)
+        level_grabber_for_pickup(servo)
 
         while True:
-            last_left_color, last_right_color = read_sensor_colors(left_color_sensor, right_color_sensor, last_left_color, last_right_color)
+            left_color, right_color = read_sensor_colors(left_color_sensor, right_color_sensor)
 
-            action_handled = handle_color_action(tank, servo, last_left_color, last_right_color)
+            if state == STATE_FOLLOW_MAIN_LINE:
+                next_state, next_approach_started_at = handle_follow_main_line_state(tank, left_color, right_color, has_object)
 
-            if action_handled:
-                wait(SERVO_INTERVAL)
+                state = next_state
+
+                if next_approach_started_at is not None:
+                    approach_started_at = next_approach_started_at
+
                 continue
 
-            follow_line_step(tank, last_left_color, last_right_color)
+            if state == STATE_APPROACH_PICKUP_TILE:
+                state = handle_approach_pickup_tile_state(tank, left_color, right_color, approach_started_at)
+                continue
+
+            if state == STATE_PICKUP_TILE_PROCEDURE:
+                run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor)
+                has_object = True
+                state = STATE_REACQUIRE_LINE
+                continue
+
+            if state == STATE_REACQUIRE_LINE:
+                state = handle_reacquire_line_state(tank, left_color, right_color)
+                continue
 
     except KeyboardInterrupt:
-        tank.off()
+        stop(tank)
         servo.off()
 
 
