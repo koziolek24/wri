@@ -19,19 +19,19 @@ COLOR_NAMES = {
 }
 
 MOVE_FORWARD = "forward"
-MOVE_BACKWARD = "backward"
+MOVE_ROTATE = "rotate"
 MOVE_HARD_LEFT = "hard_left"
 MOVE_HARD_RIGHT = "hard_right"
 MOVE_SOFT_RIGHT = "soft_right"
 MOVE_SOFT_LEFT = "soft_left"
 
 MOVEMENTS = {
-    MOVE_FORWARD: (25, 25),
-    MOVE_BACKWARD: (-25, -25),
-    MOVE_HARD_LEFT: (25, -25),
-    MOVE_HARD_RIGHT: (-25, 25),
-    MOVE_SOFT_RIGHT: (25, 10),
-    MOVE_SOFT_LEFT: (10, 25),
+    MOVE_FORWARD: (15, 15),
+    MOVE_ROTATE: (-50, 50),
+    MOVE_HARD_LEFT: (15, -15),
+    MOVE_HARD_RIGHT: (-15, 0),
+    MOVE_SOFT_RIGHT: (0, -25),
+    MOVE_SOFT_LEFT: (-25, 0),
 }
 
 DEFAULT_INTERVAL = 0.0
@@ -139,7 +139,7 @@ def handle_color_action(tank, servo, left_color, right_color):
         drive(tank, MOVE_FORWARD)
         wait(0.005)
         move_grabber_up(servo)
-        drive(tank, MOVE_BACKWARD)
+        drive(tank, MOVE_ROTATE)
         wait(0.01)
         return True
 
@@ -147,7 +147,7 @@ def handle_color_action(tank, servo, left_color, right_color):
         drive(tank, MOVE_FORWARD)
         wait(0.005)
         move_grabber_down(servo)
-        drive(tank, MOVE_BACKWARD)
+        drive(tank, MOVE_ROTATE)
         wait(0.01)
         return True
 
