@@ -5,6 +5,8 @@ from ev3dev2.sensor import INPUT_1, INPUT_2
 from ev3dev2.sensor.lego import ColorSensor
 
 
+DEBUG = False
+
 COLOR_BLACK = "Black"
 COLOR_GREEN = "Green"
 COLOR_RED = "Red"
@@ -27,15 +29,22 @@ MOVE_SOFT_LEFT = "soft_left"
 
 MOVEMENTS = {
     MOVE_FORWARD: (15, 15),
-    MOVE_ROTATE: (-50, 50),
-    MOVE_HARD_LEFT: (15, -15),
-    MOVE_HARD_RIGHT: (-15, 0),
-    MOVE_SOFT_RIGHT: (0, -25),
-    MOVE_SOFT_LEFT: (-25, 0),
+    MOVE_ROTATE: (-60, 60),
+    MOVE_HARD_LEFT: (-35, 20),
+    MOVE_HARD_RIGHT: (20, -35),
+    MOVE_SOFT_RIGHT: (12, -28),
+    MOVE_SOFT_LEFT: (-28, 12),
 }
 
-DEFAULT_INTERVAL = 0.0
+DEFAULT_INTERVAL = 0.01
 SERVO_INTERVAL = 0.1
+
+
+def debug(message):
+    """Prints a debug message only when debug mode is enabled."""
+
+    if DEBUG:
+        print(message)
 
 
 def wait(interval=0.05):
@@ -114,21 +123,22 @@ def get_line_movement(left_color, right_color):
     """Selects the robot movement based on the colors detected by the line sensors."""
 
     if left_color == COLOR_WHITE and right_color == COLOR_WHITE:
+        debug("forward")
         return MOVE_FORWARD
 
     if left_color == COLOR_WHITE and right_color == COLOR_BLACK:
-        print("lewo")
+        debug("correction right")
         return MOVE_SOFT_RIGHT
 
     if left_color == COLOR_BLACK and right_color == COLOR_WHITE:
-        print("prawo")
+        debug("correction left")
         return MOVE_SOFT_LEFT
 
     if left_color == COLOR_BLACK and right_color == COLOR_BLACK:
-        print("prosto")
+        debug("forward")
         return MOVE_FORWARD
 
-    print("prosto")
+    debug("forward")
     return MOVE_FORWARD
 
 
