@@ -53,8 +53,8 @@ TILE_DRIVE_INTERVAL = 0.01
 
 BRANCH_TURN_TIME = 0.25
 TURN_AROUND_TIME = 0.85
-PICKUP_MARKER_IGNORE_TIME = 0.40
 
+PICKUP_TILE_CONFIRM_TIME = 1.00
 PICKUP_TILE_MIN_FORWARD_TIME = 0.35
 PICKUP_TILE_MAX_FORWARD_TIME = 3.00
 RETURN_TILE_MAX_FORWARD_TIME = 4.00
@@ -110,6 +110,12 @@ def sees_color(left_color, right_color, expected_color):
     return left_color == expected_color or right_color == expected_color
 
 
+def both_sensors_see_color(left_color, right_color, expected_color):
+    """Checks whether both color sensors see the expected color."""
+
+    return left_color == expected_color and right_color == expected_color
+
+
 def get_color_side(left_color, right_color, expected_color):
     """Returns the side where exactly one sensor sees the expected color."""
 
@@ -145,10 +151,36 @@ def get_line_movement(left_color, right_color):
     return MOVE_FORWARD
 
 
+def get_colored_line_movement(left_color, right_color, line_color):
+    """Selects the robot movement for following a colored branch line."""
+
+    if left_color == line_color and right_color == line_color:
+        debug("colored line forward")
+        return MOVE_FORWARD
+
+    if left_color == line_color and right_color != line_color:
+        debug("colored line correction left")
+        return MOVE_SOFT_LEFT
+
+    if right_color == line_color and left_color != line_color:
+        debug("colored line correction right")
+        return MOVE_SOFT_RIGHT
+
+    return get_line_movement(left_color, right_color)
+
+
 def follow_line_step(tank, left_color, right_color):
     """Performs a single line-following step."""
 
     movement_name = get_line_movement(left_color, right_color)
+    drive(tank, movement_name)
+    wait(DEFAULT_INTERVAL)
+
+
+def follow_colored_or_black_line_step(tank, left_color, right_color, line_color):
+    """Follows the colored branch line when visible and falls back to the black line otherwise."""
+
+    movement_name = get_colored_line_movement(left_color, right_color, line_color)
     drive(tank, movement_name)
     wait(DEFAULT_INTERVAL)
 
@@ -259,29 +291,50 @@ def handle_follow_main_line_state(tank, left_color, right_color, has_object):
 
     if has_object:
         follow_line_step(tank, left_color, right_color)
-        return STATE_FOLLOW_MAIN_LINE, None
+        return STATE_FOLLOW_MAIN_LINE
 
     branch_side = get_color_side(left_color, right_color, PICKUP_COLOR)
 
     if branch_side != SIDE_NONE:
         turn_to_pickup_branch(tank, branch_side)
-        return STATE_APPROACH_PICKUP_TILE, time.time()
+        return STATE_APPROACH_PICKUP_TILE
 
     follow_line_step(tank, left_color, right_color)
-    return STATE_FOLLOW_MAIN_LINE, None
+    return STATE_FOLLOW_MAIN_LINE
 
 
-def handle_approach_pickup_tile_state(tank, left_color, right_color, approach_started_at):
-    """Handles the route between the pickup branch marker and the pickup tile."""
+def update_pickup_tile_seen_since(left_color, right_color, pickup_tile_seen_since):
+    """Updates the timestamp used to confirm that the robot is on the pickup tile."""
 
-    can_detect_pickup_tile = time.time() - approach_started_at >= PICKUP_MARKER_IGNORE_TIME
+    if both_sensors_see_color(left_color, right_color, PICKUP_COLOR):
+        if pickup_tile_seen_since is None:
+            return time.time()
 
-    if can_detect_pickup_tile and sees_color(left_color, right_color, PICKUP_COLOR):
+        return pickup_tile_seen_since
+
+    return None
+
+
+def is_pickup_tile_confirmed(pickup_tile_seen_since):
+    """Checks whether the pickup tile has been detected for the required continuous time."""
+
+    if pickup_tile_seen_since is None:
+        return False
+
+    return time.time() - pickup_tile_seen_since >= PICKUP_TILE_CONFIRM_TIME
+
+
+def handle_approach_pickup_tile_state(tank, left_color, right_color, pickup_tile_seen_since):
+    """Handles following the pickup branch and confirms the pickup tile after stable color detection."""
+
+    next_pickup_tile_seen_since = update_pickup_tile_seen_since(left_color, right_color, pickup_tile_seen_since)
+
+    if is_pickup_tile_confirmed(next_pickup_tile_seen_since):
         stop(tank)
-        return STATE_PICKUP_TILE_PROCEDURE
+        return STATE_PICKUP_TILE_PROCEDURE, None
 
-    follow_line_step(tank, left_color, right_color)
-    return STATE_APPROACH_PICKUP_TILE
+    follow_colored_or_black_line_step(tank, left_color, right_color, PICKUP_COLOR)
+    return STATE_APPROACH_PICKUP_TILE, next_pickup_tile_seen_since
 
 
 def handle_reacquire_line_state(tank, left_color, right_color):
@@ -307,7 +360,7 @@ def main():
 
     state = STATE_FOLLOW_MAIN_LINE
     has_object = False
-    approach_started_at = 0.0
+    pickup_tile_seen_since = None
 
     try:
         print("Starting")
@@ -317,23 +370,22 @@ def main():
             left_color, right_color = read_sensor_colors(left_color_sensor, right_color_sensor)
 
             if state == STATE_FOLLOW_MAIN_LINE:
-                next_state, next_approach_started_at = handle_follow_main_line_state(tank, left_color, right_color, has_object)
+                state = handle_follow_main_line_state(tank, left_color, right_color, has_object)
 
-                state = next_state
-
-                if next_approach_started_at is not None:
-                    approach_started_at = next_approach_started_at
+                if state == STATE_APPROACH_PICKUP_TILE:
+                    pickup_tile_seen_since = None
 
                 continue
 
             if state == STATE_APPROACH_PICKUP_TILE:
-                state = handle_approach_pickup_tile_state(tank, left_color, right_color, approach_started_at)
+                state, pickup_tile_seen_since = handle_approach_pickup_tile_state(tank, left_color, right_color, pickup_tile_seen_since)
                 continue
 
             if state == STATE_PICKUP_TILE_PROCEDURE:
                 run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor)
                 has_object = True
                 state = STATE_REACQUIRE_LINE
+                pickup_tile_seen_since = None
                 continue
 
             if state == STATE_REACQUIRE_LINE:
