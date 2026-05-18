@@ -61,12 +61,14 @@ PICKUP_TILE_CONFIRM_TIME = 1.00
 PICKUP_TILE_MIN_FORWARD_TIME = 0.35
 PICKUP_TILE_MAX_FORWARD_TIME = 3.00
 BACKUP_TO_MAIN_LINE_MAX_TIME = 5.00
+BACKUP_MIN_TIME_BEFORE_BLACK_DETECTION = 0.35
 TILE_LEFT_CONFIRM_READS = 3
 
 GRABBER_DOWN_SPEED = -80
-GRABBER_DOWN_TIME = 0.30
+GRABBER_DOWN_TIME = 0.15
 GRABBER_UP_SPEED = 80
 GRABBER_UP_TIME = 0.35
+GRABBER_INITIAL_UP_TIME = 0.80
 
 
 def debug(message):
@@ -205,19 +207,31 @@ def turn_to_continue_main_line(tank, branch_side):
 
 
 def move_grabber_down_to_limit(servo):
-    """Moves the grabber down until it reaches the mechanical lower limit."""
+    """Moves the grabber down by the calibrated drop distance."""
 
     servo.on(GRABBER_DOWN_SPEED)
     wait(GRABBER_DOWN_TIME)
     servo.off()
 
 
-def move_grabber_up_to_limit(servo):
-    """Moves the grabber up until it reaches the mechanical upper limit."""
+def move_grabber_up_for_duration(servo, duration):
+    """Moves the grabber up for the selected duration."""
 
     servo.on(GRABBER_UP_SPEED)
-    wait(GRABBER_UP_TIME)
+    wait(duration)
     servo.off()
+
+
+def move_grabber_up_to_limit(servo):
+    """Moves the grabber up by the calibrated pickup lift distance."""
+
+    move_grabber_up_for_duration(servo, GRABBER_UP_TIME)
+
+
+def move_grabber_up_to_start_position(servo):
+    """Moves the grabber to a high default position before driving."""
+
+    move_grabber_up_for_duration(servo, GRABBER_INITIAL_UP_TIME)
 
 
 def drive_forward_until_tile_crossed(tank, left_color_sensor, right_color_sensor, expected_color, min_time, max_time):
@@ -248,19 +262,22 @@ def drive_forward_until_tile_crossed(tank, left_color_sensor, right_color_sensor
 
 
 def drive_backward_until_black_line_seen(tank, left_color_sensor, right_color_sensor):
-    """Drives backward until at least one sensor detects the black main route line."""
+    """Drives backward for a minimum time and then stops when at least one sensor detects the black main line."""
 
     start_time = time.time()
 
     while time.time() - start_time < BACKUP_TO_MAIN_LINE_MAX_TIME:
+        elapsed_time = time.time() - start_time
+
+        drive(tank, MOVE_BACKWARD)
+
         left_color, right_color = read_sensor_colors(left_color_sensor, right_color_sensor)
 
-        if sees_color(left_color, right_color, COLOR_BLACK):
+        if elapsed_time >= BACKUP_MIN_TIME_BEFORE_BLACK_DETECTION and sees_color(left_color, right_color, COLOR_BLACK):
             debug("black main line reached while backing up")
             stop(tank)
             return True
 
-        drive(tank, MOVE_BACKWARD)
         wait(BACKUP_INTERVAL)
 
     debug("black main line was not reached while backing up")
@@ -312,6 +329,8 @@ def run_dropoff_tile_procedure(tank, servo, left_color_sensor, right_color_senso
         left_color_sensor,
         right_color_sensor,
     )
+
+    move_grabber_up_to_start_position(servo)
 
     if main_line_was_reached:
         turn_to_continue_main_line(tank, dropoff_branch_side)
@@ -408,7 +427,7 @@ def main():
 
     try:
         print("Starting")
-        move_grabber_down_to_limit(servo)
+        move_grabber_up_to_start_position(servo)
 
         while True:
             left_color, right_color = read_sensor_colors(left_color_sensor, right_color_sensor)
