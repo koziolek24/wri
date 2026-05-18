@@ -21,10 +21,14 @@ COLOR_NAMES = {
 }
 
 PICKUP_COLOR = COLOR_GREEN
+DROPOFF_COLOR = COLOR_RED
 
 STATE_FOLLOW_MAIN_LINE = "follow_main_line"
 STATE_APPROACH_PICKUP_TILE = "approach_pickup_tile"
 STATE_PICKUP_TILE_PROCEDURE = "pickup_tile_procedure"
+STATE_APPROACH_DROPOFF_TILE = "approach_dropoff_tile"
+STATE_DROPOFF_TILE_PROCEDURE = "dropoff_tile_procedure"
+STATE_TASK_DONE = "task_done"
 
 SIDE_LEFT = "left"
 SIDE_RIGHT = "right"
@@ -158,42 +162,45 @@ def follow_line_step(tank, left_color, right_color, line_color):
     wait(DEFAULT_INTERVAL)
 
 
-def turn_to_pickup_branch(tank, branch_side):
-    """Turns the robot into the pickup branch based on the side of the pickup marker."""
+def turn_to_color_branch(tank, branch_side, branch_color):
+    """Turns the robot into a colored branch based on the side of the detected marker."""
 
     if branch_side == SIDE_LEFT:
-        debug("turn to left pickup branch")
+        debug("turn to left " + branch_color + " branch")
         drive(tank, MOVE_HARD_LEFT)
         wait(BRANCH_TURN_TIME)
         stop(tank)
         return
 
     if branch_side == SIDE_RIGHT:
-        debug("turn to right pickup branch")
+        debug("turn to right " + branch_color + " branch")
         drive(tank, MOVE_HARD_RIGHT)
         wait(BRANCH_TURN_TIME)
         stop(tank)
         return
 
+    debug("missing branch side")
+    stop(tank)
 
-def turn_to_continue_main_line(tank, pickup_branch_side):
-    """Turns the robot back to the previous main route direction after reversing from the pickup branch."""
 
-    if pickup_branch_side == SIDE_LEFT:
+def turn_to_continue_main_line(tank, branch_side):
+    """Turns the robot back to the previous main route direction after reversing from a branch."""
+
+    if branch_side == SIDE_LEFT:
         debug("turn right to continue main line")
         drive(tank, MOVE_HARD_RIGHT)
         wait(RETURN_TO_MAIN_TURN_TIME)
         stop(tank)
         return
 
-    if pickup_branch_side == SIDE_RIGHT:
+    if branch_side == SIDE_RIGHT:
         debug("turn left to continue main line")
         drive(tank, MOVE_HARD_LEFT)
         wait(RETURN_TO_MAIN_TURN_TIME)
         stop(tank)
         return
 
-    debug("missing pickup branch side")
+    debug("missing branch side")
     stop(tank)
 
 
@@ -292,17 +299,43 @@ def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor
     debug("pickup tile procedure finished")
 
 
+def run_dropoff_tile_procedure(tank, servo, left_color_sensor, right_color_sensor, dropoff_branch_side):
+    """Drops the object on the dropoff tile and returns to the main route by reversing."""
+
+    debug("dropoff tile procedure started")
+
+    stop(tank)
+    move_grabber_down_to_limit(servo)
+
+    main_line_was_reached = drive_backward_until_black_line_seen(
+        tank,
+        left_color_sensor,
+        right_color_sensor,
+    )
+
+    if main_line_was_reached:
+        turn_to_continue_main_line(tank, dropoff_branch_side)
+
+    debug("dropoff tile procedure finished")
+
+
 def handle_follow_main_line_state(tank, left_color, right_color, has_object):
-    """Handles line following on the main route and detects the pickup branch marker."""
+    """Handles main route following and detects the next required colored branch."""
 
     if has_object:
+        branch_side = get_color_side(left_color, right_color, DROPOFF_COLOR)
+
+        if branch_side != SIDE_NONE:
+            turn_to_color_branch(tank, branch_side, DROPOFF_COLOR)
+            return STATE_APPROACH_DROPOFF_TILE, branch_side
+
         follow_line_step(tank, left_color, right_color, COLOR_BLACK)
         return STATE_FOLLOW_MAIN_LINE, SIDE_NONE
 
     branch_side = get_color_side(left_color, right_color, PICKUP_COLOR)
 
     if branch_side != SIDE_NONE:
-        turn_to_pickup_branch(tank, branch_side)
+        turn_to_color_branch(tank, branch_side, PICKUP_COLOR)
         return STATE_APPROACH_PICKUP_TILE, branch_side
 
     follow_line_step(tank, left_color, right_color, COLOR_BLACK)
@@ -330,6 +363,12 @@ def is_pickup_tile_confirmed(pickup_tile_seen_since):
     return time.time() - pickup_tile_seen_since >= PICKUP_TILE_CONFIRM_TIME
 
 
+def is_dropoff_tile_detected(left_color, right_color):
+    """Checks whether the robot has entered the dropoff tile."""
+
+    return both_sensors_see_color(left_color, right_color, DROPOFF_COLOR)
+
+
 def handle_approach_pickup_tile_state(tank, left_color, right_color, pickup_tile_seen_since):
     """Handles following the pickup color line and confirms the pickup tile after stable color detection."""
 
@@ -343,6 +382,17 @@ def handle_approach_pickup_tile_state(tank, left_color, right_color, pickup_tile
     return STATE_APPROACH_PICKUP_TILE, next_pickup_tile_seen_since
 
 
+def handle_approach_dropoff_tile_state(tank, left_color, right_color):
+    """Handles following the dropoff color line and detects the dropoff tile immediately."""
+
+    if is_dropoff_tile_detected(left_color, right_color):
+        stop(tank)
+        return STATE_DROPOFF_TILE_PROCEDURE
+
+    follow_line_step(tank, left_color, right_color, DROPOFF_COLOR)
+    return STATE_APPROACH_DROPOFF_TILE
+
+
 def main():
     tank = MoveTank(OUTPUT_A, OUTPUT_B)
     servo = MediumMotor(OUTPUT_D)
@@ -354,6 +404,7 @@ def main():
     has_object = False
     pickup_tile_seen_since = None
     pickup_branch_side = SIDE_NONE
+    dropoff_branch_side = SIDE_NONE
 
     try:
         print("Starting")
@@ -368,6 +419,9 @@ def main():
                 if state == STATE_APPROACH_PICKUP_TILE:
                     pickup_tile_seen_since = None
                     pickup_branch_side = branch_side
+
+                if state == STATE_APPROACH_DROPOFF_TILE:
+                    dropoff_branch_side = branch_side
 
                 continue
 
@@ -386,6 +440,22 @@ def main():
                 state = STATE_FOLLOW_MAIN_LINE
                 pickup_tile_seen_since = None
                 pickup_branch_side = SIDE_NONE
+                continue
+
+            if state == STATE_APPROACH_DROPOFF_TILE:
+                state = handle_approach_dropoff_tile_state(tank, left_color, right_color)
+                continue
+
+            if state == STATE_DROPOFF_TILE_PROCEDURE:
+                run_dropoff_tile_procedure(tank, servo, left_color_sensor, right_color_sensor, dropoff_branch_side)
+                has_object = False
+                state = STATE_TASK_DONE
+                dropoff_branch_side = SIDE_NONE
+                continue
+
+            if state == STATE_TASK_DONE:
+                stop(tank)
+                wait(DEFAULT_INTERVAL)
                 continue
 
     except KeyboardInterrupt:
