@@ -151,8 +151,20 @@ def get_line_movement(left_color, right_color):
     return MOVE_FORWARD
 
 
-def get_colored_line_movement(left_color, right_color, line_color):
-    """Selects the robot movement for following a colored branch line."""
+def update_colored_line_last_seen_side(left_color, right_color, line_color, colored_line_last_seen_side):
+    """Updates the last known side of the colored line using the current sensor colors."""
+
+    if left_color == line_color and right_color != line_color:
+        return SIDE_LEFT
+
+    if right_color == line_color and left_color != line_color:
+        return SIDE_RIGHT
+
+    return colored_line_last_seen_side
+
+
+def get_colored_line_movement(left_color, right_color, line_color, colored_line_last_seen_side):
+    """Selects movement for following only the colored branch line."""
 
     if left_color == line_color and right_color == line_color:
         debug("colored line forward")
@@ -166,23 +178,36 @@ def get_colored_line_movement(left_color, right_color, line_color):
         debug("colored line correction right")
         return MOVE_SOFT_RIGHT
 
-    return get_line_movement(left_color, right_color)
+    if colored_line_last_seen_side == SIDE_LEFT:
+        debug("colored line search left")
+        return MOVE_HARD_LEFT
+
+    if colored_line_last_seen_side == SIDE_RIGHT:
+        debug("colored line search right")
+        return MOVE_HARD_RIGHT
+
+    debug("colored line not seen, forward search")
+    return MOVE_FORWARD
 
 
 def follow_line_step(tank, left_color, right_color):
-    """Performs a single line-following step."""
+    """Performs a single black line-following step."""
 
     movement_name = get_line_movement(left_color, right_color)
     drive(tank, movement_name)
     wait(DEFAULT_INTERVAL)
 
 
-def follow_colored_or_black_line_step(tank, left_color, right_color, line_color):
-    """Follows the colored branch line when visible and falls back to the black line otherwise."""
+def follow_colored_line_step(tank, left_color, right_color, line_color, colored_line_last_seen_side):
+    """Performs a single step of following only the colored branch line."""
 
-    movement_name = get_colored_line_movement(left_color, right_color, line_color)
+    next_colored_line_last_seen_side = update_colored_line_last_seen_side(left_color, right_color, line_color, colored_line_last_seen_side)
+    movement_name = get_colored_line_movement(left_color, right_color, line_color, next_colored_line_last_seen_side)
+
     drive(tank, movement_name)
     wait(DEFAULT_INTERVAL)
+
+    return next_colored_line_last_seen_side
 
 
 def turn_to_pickup_branch(tank, branch_side):
@@ -291,16 +316,16 @@ def handle_follow_main_line_state(tank, left_color, right_color, has_object):
 
     if has_object:
         follow_line_step(tank, left_color, right_color)
-        return STATE_FOLLOW_MAIN_LINE
+        return STATE_FOLLOW_MAIN_LINE, SIDE_NONE
 
     branch_side = get_color_side(left_color, right_color, PICKUP_COLOR)
 
     if branch_side != SIDE_NONE:
         turn_to_pickup_branch(tank, branch_side)
-        return STATE_APPROACH_PICKUP_TILE
+        return STATE_APPROACH_PICKUP_TILE, branch_side
 
     follow_line_step(tank, left_color, right_color)
-    return STATE_FOLLOW_MAIN_LINE
+    return STATE_FOLLOW_MAIN_LINE, SIDE_NONE
 
 
 def update_pickup_tile_seen_since(left_color, right_color, pickup_tile_seen_since):
@@ -324,17 +349,18 @@ def is_pickup_tile_confirmed(pickup_tile_seen_since):
     return time.time() - pickup_tile_seen_since >= PICKUP_TILE_CONFIRM_TIME
 
 
-def handle_approach_pickup_tile_state(tank, left_color, right_color, pickup_tile_seen_since):
-    """Handles following the pickup branch and confirms the pickup tile after stable color detection."""
+def handle_approach_pickup_tile_state(tank, left_color, right_color, pickup_tile_seen_since, colored_line_last_seen_side):
+    """Handles following only the pickup color branch and confirms the pickup tile after stable color detection."""
 
     next_pickup_tile_seen_since = update_pickup_tile_seen_since(left_color, right_color, pickup_tile_seen_since)
 
     if is_pickup_tile_confirmed(next_pickup_tile_seen_since):
         stop(tank)
-        return STATE_PICKUP_TILE_PROCEDURE, None
+        return STATE_PICKUP_TILE_PROCEDURE, None, colored_line_last_seen_side
 
-    follow_colored_or_black_line_step(tank, left_color, right_color, PICKUP_COLOR)
-    return STATE_APPROACH_PICKUP_TILE, next_pickup_tile_seen_since
+    next_colored_line_last_seen_side = follow_colored_line_step(tank, left_color, right_color, PICKUP_COLOR, colored_line_last_seen_side)
+
+    return STATE_APPROACH_PICKUP_TILE, next_pickup_tile_seen_since, next_colored_line_last_seen_side
 
 
 def handle_reacquire_line_state(tank, left_color, right_color):
@@ -361,6 +387,7 @@ def main():
     state = STATE_FOLLOW_MAIN_LINE
     has_object = False
     pickup_tile_seen_since = None
+    colored_line_last_seen_side = SIDE_NONE
 
     try:
         print("Starting")
@@ -370,15 +397,22 @@ def main():
             left_color, right_color = read_sensor_colors(left_color_sensor, right_color_sensor)
 
             if state == STATE_FOLLOW_MAIN_LINE:
-                state = handle_follow_main_line_state(tank, left_color, right_color, has_object)
+                state, branch_side = handle_follow_main_line_state(tank, left_color, right_color, has_object)
 
                 if state == STATE_APPROACH_PICKUP_TILE:
                     pickup_tile_seen_since = None
+                    colored_line_last_seen_side = branch_side
 
                 continue
 
             if state == STATE_APPROACH_PICKUP_TILE:
-                state, pickup_tile_seen_since = handle_approach_pickup_tile_state(tank, left_color, right_color, pickup_tile_seen_since)
+                state, pickup_tile_seen_since, colored_line_last_seen_side = handle_approach_pickup_tile_state(
+                    tank,
+                    left_color,
+                    right_color,
+                    pickup_tile_seen_since,
+                    colored_line_last_seen_side,
+                )
                 continue
 
             if state == STATE_PICKUP_TILE_PROCEDURE:
@@ -386,6 +420,7 @@ def main():
                 has_object = True
                 state = STATE_REACQUIRE_LINE
                 pickup_tile_seen_since = None
+                colored_line_last_seen_side = SIDE_NONE
                 continue
 
             if state == STATE_REACQUIRE_LINE:
