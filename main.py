@@ -25,14 +25,13 @@ PICKUP_COLOR = COLOR_GREEN
 STATE_FOLLOW_MAIN_LINE = "follow_main_line"
 STATE_APPROACH_PICKUP_TILE = "approach_pickup_tile"
 STATE_PICKUP_TILE_PROCEDURE = "pickup_tile_procedure"
-STATE_REACQUIRE_LINE = "reacquire_line"
 
 SIDE_LEFT = "left"
 SIDE_RIGHT = "right"
 SIDE_NONE = "none"
 
 MOVE_FORWARD = "forward"
-MOVE_ROTATE = "rotate"
+MOVE_BACKWARD = "backward"
 MOVE_HARD_LEFT = "hard_left"
 MOVE_HARD_RIGHT = "hard_right"
 MOVE_SOFT_RIGHT = "soft_right"
@@ -40,7 +39,7 @@ MOVE_SOFT_LEFT = "soft_left"
 
 MOVEMENTS = {
     MOVE_FORWARD: (15, 15),
-    MOVE_ROTATE: (-60, 60),
+    MOVE_BACKWARD: (-15, -15),
     MOVE_HARD_LEFT: (-35, 20),
     MOVE_HARD_RIGHT: (20, -35),
     MOVE_SOFT_RIGHT: (12, -28),
@@ -48,16 +47,16 @@ MOVEMENTS = {
 }
 
 DEFAULT_INTERVAL = 0.01
-REACQUIRE_INTERVAL = 0.01
 TILE_DRIVE_INTERVAL = 0.01
+BACKUP_INTERVAL = 0.01
 
 BRANCH_TURN_TIME = 0.25
-TURN_AROUND_TIME = 0.85
+RETURN_TO_MAIN_TURN_TIME = 0.25
 
 PICKUP_TILE_CONFIRM_TIME = 1.00
 PICKUP_TILE_MIN_FORWARD_TIME = 0.35
 PICKUP_TILE_MAX_FORWARD_TIME = 3.00
-RETURN_TILE_MAX_FORWARD_TIME = 4.00
+BACKUP_TO_MAIN_LINE_MAX_TIME = 5.00
 TILE_LEFT_CONFIRM_READS = 3
 
 GRABBER_DOWN_SPEED = -80
@@ -228,6 +227,27 @@ def turn_to_pickup_branch(tank, branch_side):
         return
 
 
+def turn_to_continue_main_line(tank, pickup_branch_side):
+    """Turns the robot back to the previous main route direction after reversing from the pickup branch."""
+
+    if pickup_branch_side == SIDE_LEFT:
+        debug("turn right to continue main line")
+        drive(tank, MOVE_HARD_RIGHT)
+        wait(RETURN_TO_MAIN_TURN_TIME)
+        stop(tank)
+        return
+
+    if pickup_branch_side == SIDE_RIGHT:
+        debug("turn left to continue main line")
+        drive(tank, MOVE_HARD_LEFT)
+        wait(RETURN_TO_MAIN_TURN_TIME)
+        stop(tank)
+        return
+
+    debug("missing pickup branch side")
+    stop(tank)
+
+
 def move_grabber_down_to_limit(servo):
     """Moves the grabber down until it reaches the mechanical lower limit."""
 
@@ -242,14 +262,6 @@ def move_grabber_up_to_limit(servo):
     servo.on(GRABBER_UP_SPEED)
     wait(GRABBER_UP_TIME)
     servo.off()
-
-
-def rotate_around(tank):
-    """Rotates the robot in place for a calibrated 180 degree turn."""
-
-    drive(tank, MOVE_ROTATE)
-    wait(TURN_AROUND_TIME)
-    stop(tank)
 
 
 def drive_forward_until_tile_crossed(tank, left_color_sensor, right_color_sensor, expected_color, min_time, max_time):
@@ -279,8 +291,29 @@ def drive_forward_until_tile_crossed(tank, left_color_sensor, right_color_sensor
     stop(tank)
 
 
-def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor):
-    """Runs the complete pickup sequence on the colored pickup tile."""
+def drive_backward_until_black_line_seen(tank, left_color_sensor, right_color_sensor):
+    """Drives backward until at least one sensor detects the black main route line."""
+
+    start_time = time.time()
+
+    while time.time() - start_time < BACKUP_TO_MAIN_LINE_MAX_TIME:
+        left_color, right_color = read_sensor_colors(left_color_sensor, right_color_sensor)
+
+        if sees_color(left_color, right_color, COLOR_BLACK):
+            debug("black main line reached while backing up")
+            stop(tank)
+            return True
+
+        drive(tank, MOVE_BACKWARD)
+        wait(BACKUP_INTERVAL)
+
+    debug("black main line was not reached while backing up")
+    stop(tank)
+    return False
+
+
+def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor, pickup_branch_side):
+    """Runs the pickup sequence and returns to the main route by reversing instead of rotating around."""
 
     debug("pickup tile procedure started")
 
@@ -297,16 +330,15 @@ def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor
     )
 
     move_grabber_up_to_limit(servo)
-    rotate_around(tank)
 
-    drive_forward_until_tile_crossed(
+    main_line_was_reached = drive_backward_until_black_line_seen(
         tank,
         left_color_sensor,
         right_color_sensor,
-        PICKUP_COLOR,
-        PICKUP_TILE_MIN_FORWARD_TIME,
-        RETURN_TILE_MAX_FORWARD_TIME,
     )
+
+    if main_line_was_reached:
+        turn_to_continue_main_line(tank, pickup_branch_side)
 
     debug("pickup tile procedure finished")
 
@@ -363,20 +395,6 @@ def handle_approach_pickup_tile_state(tank, left_color, right_color, pickup_tile
     return STATE_APPROACH_PICKUP_TILE, next_pickup_tile_seen_since, next_colored_line_last_seen_side
 
 
-def handle_reacquire_line_state(tank, left_color, right_color):
-    """Drives forward until the black line is detected again."""
-
-    if sees_color(left_color, right_color, COLOR_BLACK):
-        debug("line reacquired")
-        stop(tank)
-        return STATE_FOLLOW_MAIN_LINE
-
-    drive(tank, MOVE_FORWARD)
-    wait(REACQUIRE_INTERVAL)
-
-    return STATE_REACQUIRE_LINE
-
-
 def main():
     tank = MoveTank(OUTPUT_A, OUTPUT_B)
     servo = MediumMotor(OUTPUT_D)
@@ -388,6 +406,7 @@ def main():
     has_object = False
     pickup_tile_seen_since = None
     colored_line_last_seen_side = SIDE_NONE
+    pickup_branch_side = SIDE_NONE
 
     try:
         print("Starting")
@@ -402,6 +421,7 @@ def main():
                 if state == STATE_APPROACH_PICKUP_TILE:
                     pickup_tile_seen_since = None
                     colored_line_last_seen_side = branch_side
+                    pickup_branch_side = branch_side
 
                 continue
 
@@ -416,15 +436,12 @@ def main():
                 continue
 
             if state == STATE_PICKUP_TILE_PROCEDURE:
-                run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor)
+                run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor, pickup_branch_side)
                 has_object = True
-                state = STATE_REACQUIRE_LINE
+                state = STATE_FOLLOW_MAIN_LINE
                 pickup_tile_seen_since = None
                 colored_line_last_seen_side = SIDE_NONE
-                continue
-
-            if state == STATE_REACQUIRE_LINE:
-                state = handle_reacquire_line_state(tank, left_color, right_color)
+                pickup_branch_side = SIDE_NONE
                 continue
 
     except KeyboardInterrupt:
