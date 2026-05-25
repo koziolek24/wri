@@ -1,25 +1,5 @@
 import time
 
-from ev3dev2.motor import MoveTank, OUTPUT_A, OUTPUT_B, OUTPUT_D, MediumMotor
-from ev3dev2.sensor import INPUT_1, INPUT_2
-from ev3dev2.sensor.lego import ColorSensor
-
-
-COLOR_BLACK = "Black"
-COLOR_GREEN = "Green"
-COLOR_RED = "Red"
-COLOR_WHITE = "White"
-COLOR_OTHER = "Other"
-
-COLOR_NAMES = {
-    1: COLOR_BLACK,
-    3: COLOR_GREEN,
-    5: COLOR_RED,
-    6: COLOR_WHITE,
-}
-
-import time
-
 from ev3dev2.motor import MoveTank, OUTPUT_A, OUTPUT_B, OUTPUT_D, MediumMotor, SpeedPercent
 from ev3dev2.sensor import INPUT_1, INPUT_2
 from ev3dev2.sensor.lego import ColorSensor
@@ -76,6 +56,7 @@ DEFAULT_INTERVAL = 0.01
 BACKUP_INTERVAL = 0.01
 
 BRANCH_TURN_TIME = 0.25
+FORCE_COLOR_BRANCH_TURN_TIME = 0.30
 RETURN_TO_MAIN_TURN_TIME = 0.25
 TURN_180_TIME = 1.40
 
@@ -85,7 +66,6 @@ GRABBER_DOWN_SPEED = -20
 GRABBER_DOWN_TIME = 0.3
 GRABBER_UP_SPEED = 20
 GRABBER_UP_TIME = 0.2
-
 
 
 def wait(interval=0.05):
@@ -127,15 +107,27 @@ def get_color_side(left_color, right_color, expected_color):
     return SIDE_NONE
 
 
+def get_color_branch_side_from_black_line(left_color, right_color, expected_color):
+    if left_color == expected_color and right_color == COLOR_BLACK:
+        return SIDE_LEFT
+    if right_color == expected_color and left_color == COLOR_BLACK:
+        return SIDE_RIGHT
+    return SIDE_NONE
+
+
 def get_line_movement(left_color, right_color, line_colors):
     if isinstance(line_colors, str):
         line_colors = (line_colors,)
+
     left_on_line = left_color in line_colors
     right_on_line = right_color in line_colors
+
     if not left_on_line and right_on_line:
         return MOVE_SOFT_RIGHT
+
     if left_on_line and not right_on_line:
         return MOVE_SOFT_LEFT
+
     return MOVE_FORWARD
 
 
@@ -159,6 +151,32 @@ def turn_to_color_branch(tank, branch_side, branch_color):
         return
 
     stop(tank)
+
+
+def force_turn_into_color_branch(tank, branch_side):
+    if branch_side == SIDE_LEFT:
+        drive(tank, MOVE_HARD_LEFT)
+        wait(FORCE_COLOR_BRANCH_TURN_TIME)
+        stop(tank)
+        return
+
+    if branch_side == SIDE_RIGHT:
+        drive(tank, MOVE_HARD_RIGHT)
+        wait(FORCE_COLOR_BRANCH_TURN_TIME)
+        stop(tank)
+        return
+
+    stop(tank)
+
+
+def force_color_branch_when_detected_from_black(tank, left_color, right_color, expected_color):
+    branch_side = get_color_branch_side_from_black_line(left_color, right_color, expected_color)
+
+    if branch_side == SIDE_NONE:
+        return False
+
+    force_turn_into_color_branch(tank, branch_side)
+    return True
 
 
 def turn_to_continue_main_line_after_180(tank, branch_side):
@@ -221,7 +239,6 @@ def drive_forward_following_color_until_black(tank, left_color_sensor, right_col
 
 
 def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor, pickup_branch_side):
-
     stop(tank)
     move_grabber_up_to_limit(servo)
     spin_180_degrees(tank, left_color_sensor, right_color_sensor)
@@ -237,12 +254,9 @@ def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor
         turn_to_continue_main_line_after_180(tank, pickup_branch_side)
 
 
-
 def run_dropoff_tile_procedure(tank, servo):
-
     stop(tank)
     move_grabber_down_to_limit(servo)
-
 
 
 def handle_follow_main_line_state(tank, left_color, right_color, has_object):
@@ -271,6 +285,9 @@ def handle_approach_pickup_tile_state(tank, left_color, right_color):
         stop(tank)
         return STATE_PICKUP_TILE_PROCEDURE
 
+    if force_color_branch_when_detected_from_black(tank, left_color, right_color, PICKUP_COLOR):
+        return STATE_APPROACH_PICKUP_TILE
+
     follow_line_step(tank, left_color, right_color, (PICKUP_COLOR, COLOR_BLACK))
     return STATE_APPROACH_PICKUP_TILE
 
@@ -279,6 +296,9 @@ def handle_approach_dropoff_tile_state(tank, left_color, right_color):
     if both_sensors_see_color(left_color, right_color, DROPOFF_COLOR):
         stop(tank)
         return STATE_DROPOFF_TILE_PROCEDURE
+
+    if force_color_branch_when_detected_from_black(tank, left_color, right_color, DROPOFF_COLOR):
+        return STATE_APPROACH_DROPOFF_TILE
 
     follow_line_step(tank, left_color, right_color, (DROPOFF_COLOR, COLOR_BLACK))
     return STATE_APPROACH_DROPOFF_TILE
