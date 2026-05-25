@@ -81,10 +81,10 @@ TURN_180_TIME = 1.40
 
 DRIVE_BACK_TO_MAIN_LINE_MAX_TIME = 6.00
 
-GRABBER_DOWN_SPEED = -80
+GRABBER_DOWN_SPEED = -20
 GRABBER_DOWN_TIME = 0.3
-GRABBER_UP_SPEED = 80
-GRABBER_UP_TIME = 0.35
+GRABBER_UP_SPEED = 20
+GRABBER_UP_TIME = 0.2
 
 
 
@@ -296,8 +296,6 @@ def main():
     pickup_branch_side = SIDE_NONE
 
     try:
-        move_grabber_down_to_limit(servo)
-
         while True:
             left_color, right_color = read_sensor_colors(left_color_sensor, right_color_sensor)
 
