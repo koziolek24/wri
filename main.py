@@ -62,17 +62,10 @@ TURN_180_TIME = 1.40
 DRIVE_BACK_TO_MAIN_LINE_MAX_TIME = 6.00
 
 GRABBER_DOWN_SPEED = -80
-GRABBER_DOWN_TIME = 0.30
+GRABBER_DOWN_TIME = 0.3
 GRABBER_UP_SPEED = 80
 GRABBER_UP_TIME = 0.35
 
-
-def log(message):
-    print(message)
-
-
-def log_colors(left_color, right_color):
-    print("L=" + left_color + " R=" + right_color)
 
 
 def wait(interval=0.05):
@@ -86,7 +79,6 @@ def read_color_name(color_sensor):
 def read_sensor_colors(left_color_sensor, right_color_sensor):
     left_color = read_color_name(left_color_sensor)
     right_color = read_color_name(right_color_sensor)
-    log_colors(left_color, right_color)
     return left_color, right_color
 
 
@@ -131,14 +123,12 @@ def follow_line_step(tank, left_color, right_color, line_color):
 
 def turn_to_color_branch(tank, branch_side, branch_color):
     if branch_side == SIDE_LEFT:
-        log("turn to left " + branch_color + " branch")
         drive(tank, MOVE_HARD_LEFT)
         wait(BRANCH_TURN_TIME)
         stop(tank)
         return
 
     if branch_side == SIDE_RIGHT:
-        log("turn to right " + branch_color + " branch")
         drive(tank, MOVE_HARD_RIGHT)
         wait(BRANCH_TURN_TIME)
         stop(tank)
@@ -149,14 +139,12 @@ def turn_to_color_branch(tank, branch_side, branch_color):
 
 def turn_to_continue_main_line_after_180(tank, branch_side):
     if branch_side == SIDE_LEFT:
-        log("turn left to continue main line after 180")
         drive(tank, MOVE_HARD_LEFT)
         wait(RETURN_TO_MAIN_TURN_TIME)
         stop(tank)
         return
 
     if branch_side == SIDE_RIGHT:
-        log("turn right to continue main line after 180")
         drive(tank, MOVE_HARD_RIGHT)
         wait(RETURN_TO_MAIN_TURN_TIME)
         stop(tank)
@@ -166,7 +154,6 @@ def turn_to_continue_main_line_after_180(tank, branch_side):
 
 
 def spin_180_degrees(tank, left_color_sensor, right_color_sensor):
-    log("180 degree spin")
     drive(tank, MOVE_SPIN_LEFT)
 
     start_time = time.time()
@@ -178,14 +165,14 @@ def spin_180_degrees(tank, left_color_sensor, right_color_sensor):
 
 
 def move_grabber_down_to_limit(servo):
-    log("grabber down")
+    print("grabber down")
     servo.on(GRABBER_DOWN_SPEED)
     wait(GRABBER_DOWN_TIME)
     servo.off()
 
 
 def move_grabber_up_to_limit(servo):
-    log("grabber up")
+    print("grabber up")
     servo.on(GRABBER_UP_SPEED)
     wait(GRABBER_UP_TIME)
     servo.off()
@@ -198,19 +185,16 @@ def drive_forward_following_color_until_black(tank, left_color_sensor, right_col
         left_color, right_color = read_sensor_colors(left_color_sensor, right_color_sensor)
 
         if sees_color(left_color, right_color, COLOR_BLACK):
-            log("black main line reached while driving forward")
             stop(tank)
             return True
 
         follow_line_step(tank, left_color, right_color, line_color)
 
-    log("black main line was not reached while driving forward")
     stop(tank)
     return False
 
 
 def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor, pickup_branch_side):
-    log("pickup tile procedure started")
 
     stop(tank)
     move_grabber_up_to_limit(servo)
@@ -226,16 +210,13 @@ def run_pickup_tile_procedure(tank, servo, left_color_sensor, right_color_sensor
     if main_line_was_reached:
         turn_to_continue_main_line_after_180(tank, pickup_branch_side)
 
-    log("pickup tile procedure finished")
 
 
 def run_dropoff_tile_procedure(tank, servo):
-    log("dropoff tile procedure started")
 
     stop(tank)
     move_grabber_down_to_limit(servo)
 
-    log("dropoff tile procedure finished")
 
 
 def handle_follow_main_line_state(tank, left_color, right_color, has_object):
@@ -261,7 +242,6 @@ def handle_follow_main_line_state(tank, left_color, right_color, has_object):
 
 def handle_approach_pickup_tile_state(tank, left_color, right_color):
     if both_sensors_see_color(left_color, right_color, PICKUP_COLOR):
-        log("pickup tile reached (both sensors green)")
         stop(tank)
         return STATE_PICKUP_TILE_PROCEDURE
 
@@ -271,7 +251,6 @@ def handle_approach_pickup_tile_state(tank, left_color, right_color):
 
 def handle_approach_dropoff_tile_state(tank, left_color, right_color):
     if both_sensors_see_color(left_color, right_color, DROPOFF_COLOR):
-        log("dropoff tile reached (both sensors red)")
         stop(tank)
         return STATE_DROPOFF_TILE_PROCEDURE
 
@@ -291,7 +270,6 @@ def main():
     pickup_branch_side = SIDE_NONE
 
     try:
-        log("starting")
         move_grabber_down_to_limit(servo)
 
         while True:
