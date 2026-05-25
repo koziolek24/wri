@@ -18,6 +18,26 @@ COLOR_NAMES = {
     6: COLOR_WHITE,
 }
 
+import time
+
+from ev3dev2.motor import MoveTank, OUTPUT_A, OUTPUT_B, OUTPUT_D, MediumMotor, SpeedPercent
+from ev3dev2.sensor import INPUT_1, INPUT_2
+from ev3dev2.sensor.lego import ColorSensor
+
+
+COLOR_BLACK = "Black"
+COLOR_GREEN = "Green"
+COLOR_RED = "Red"
+COLOR_WHITE = "White"
+COLOR_OTHER = "Other"
+
+COLOR_NAMES = {
+    1: COLOR_BLACK,
+    3: COLOR_GREEN,
+    5: COLOR_RED,
+    6: COLOR_WHITE,
+}
+
 PICKUP_COLOR = COLOR_GREEN
 DROPOFF_COLOR = COLOR_RED
 
@@ -107,10 +127,14 @@ def get_color_side(left_color, right_color, expected_color):
     return SIDE_NONE
 
 
-def get_line_movement(left_color, right_color, line_color):
-    if left_color != line_color and right_color == line_color:
+def get_line_movement(left_color, right_color, line_colors):
+    if isinstance(line_colors, str):
+        line_colors = (line_colors,)
+    left_on_line = left_color in line_colors
+    right_on_line = right_color in line_colors
+    if not left_on_line and right_on_line:
         return MOVE_SOFT_RIGHT
-    if left_color == line_color and right_color != line_color:
+    if left_on_line and not right_on_line:
         return MOVE_SOFT_LEFT
     return MOVE_FORWARD
 
@@ -165,17 +189,19 @@ def spin_180_degrees(tank, left_color_sensor, right_color_sensor):
 
 
 def move_grabber_down_to_limit(servo):
-    print("grabber down")
-    servo.on(GRABBER_DOWN_SPEED)
+    print("grabber down speed_sp=" + str(servo.speed_sp) + " max_speed=" + str(servo.max_speed))
+    servo.on(SpeedPercent(GRABBER_DOWN_SPEED))
     wait(GRABBER_DOWN_TIME)
     servo.off()
+    print("grabber down done position=" + str(servo.position))
 
 
 def move_grabber_up_to_limit(servo):
-    print("grabber up")
-    servo.on(GRABBER_UP_SPEED)
+    print("grabber up speed_sp=" + str(servo.speed_sp) + " max_speed=" + str(servo.max_speed))
+    servo.on(SpeedPercent(GRABBER_UP_SPEED))
     wait(GRABBER_UP_TIME)
     servo.off()
+    print("grabber up done position=" + str(servo.position))
 
 
 def drive_forward_following_color_until_black(tank, left_color_sensor, right_color_sensor, line_color):
@@ -245,7 +271,7 @@ def handle_approach_pickup_tile_state(tank, left_color, right_color):
         stop(tank)
         return STATE_PICKUP_TILE_PROCEDURE
 
-    follow_line_step(tank, left_color, right_color, PICKUP_COLOR)
+    follow_line_step(tank, left_color, right_color, (PICKUP_COLOR, COLOR_BLACK))
     return STATE_APPROACH_PICKUP_TILE
 
 
@@ -254,7 +280,7 @@ def handle_approach_dropoff_tile_state(tank, left_color, right_color):
         stop(tank)
         return STATE_DROPOFF_TILE_PROCEDURE
 
-    follow_line_step(tank, left_color, right_color, DROPOFF_COLOR)
+    follow_line_step(tank, left_color, right_color, (DROPOFF_COLOR, COLOR_BLACK))
     return STATE_APPROACH_DROPOFF_TILE
 
 
