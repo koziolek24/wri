@@ -55,9 +55,8 @@ MOVEMENTS = {
 DEFAULT_INTERVAL = 0.01
 BACKUP_INTERVAL = 0.01
 
-BRANCH_TURN_TIME = 0.25
-FORCE_COLOR_BRANCH_TURN_TIME = 0.30
-RETURN_TO_MAIN_TURN_TIME = 0.25
+FORCE_COLOR_BRANCH_TURN_TIME = 0.7
+RETURN_TO_MAIN_TURN_TIME = 0.7
 TURN_180_TIME = 1.40
 
 DRIVE_BACK_TO_MAIN_LINE_MAX_TIME = 6.00
@@ -107,14 +106,6 @@ def get_color_side(left_color, right_color, expected_color):
     return SIDE_NONE
 
 
-def get_color_branch_side_from_black_line(left_color, right_color, expected_color):
-    if left_color == expected_color and right_color == COLOR_BLACK:
-        return SIDE_LEFT
-    if right_color == expected_color and left_color == COLOR_BLACK:
-        return SIDE_RIGHT
-    return SIDE_NONE
-
-
 def get_line_movement(left_color, right_color, line_colors):
     if isinstance(line_colors, str):
         line_colors = (line_colors,)
@@ -137,23 +128,7 @@ def follow_line_step(tank, left_color, right_color, line_color):
     wait(DEFAULT_INTERVAL)
 
 
-def turn_to_color_branch(tank, branch_side, branch_color):
-    if branch_side == SIDE_LEFT:
-        drive(tank, MOVE_HARD_LEFT)
-        wait(BRANCH_TURN_TIME)
-        stop(tank)
-        return
-
-    if branch_side == SIDE_RIGHT:
-        drive(tank, MOVE_HARD_RIGHT)
-        wait(BRANCH_TURN_TIME)
-        stop(tank)
-        return
-
-    stop(tank)
-
-
-def force_turn_into_color_branch(tank, branch_side):
+def enter_color_branch_once(tank, branch_side):
     if branch_side == SIDE_LEFT:
         drive(tank, MOVE_HARD_LEFT)
         wait(FORCE_COLOR_BRANCH_TURN_TIME)
@@ -167,16 +142,6 @@ def force_turn_into_color_branch(tank, branch_side):
         return
 
     stop(tank)
-
-
-def force_color_branch_when_detected_from_black(tank, left_color, right_color, expected_color):
-    branch_side = get_color_branch_side_from_black_line(left_color, right_color, expected_color)
-
-    if branch_side == SIDE_NONE:
-        return False
-
-    force_turn_into_color_branch(tank, branch_side)
-    return True
 
 
 def turn_to_continue_main_line_after_180(tank, branch_side):
@@ -264,7 +229,7 @@ def handle_follow_main_line_state(tank, left_color, right_color, has_object):
         branch_side = get_color_side(left_color, right_color, DROPOFF_COLOR)
 
         if branch_side != SIDE_NONE:
-            turn_to_color_branch(tank, branch_side, DROPOFF_COLOR)
+            enter_color_branch_once(tank, branch_side)
             return STATE_APPROACH_DROPOFF_TILE, branch_side
 
         follow_line_step(tank, left_color, right_color, COLOR_BLACK)
@@ -273,7 +238,7 @@ def handle_follow_main_line_state(tank, left_color, right_color, has_object):
     branch_side = get_color_side(left_color, right_color, PICKUP_COLOR)
 
     if branch_side != SIDE_NONE:
-        turn_to_color_branch(tank, branch_side, PICKUP_COLOR)
+        enter_color_branch_once(tank, branch_side)
         return STATE_APPROACH_PICKUP_TILE, branch_side
 
     follow_line_step(tank, left_color, right_color, COLOR_BLACK)
@@ -285,9 +250,6 @@ def handle_approach_pickup_tile_state(tank, left_color, right_color):
         stop(tank)
         return STATE_PICKUP_TILE_PROCEDURE
 
-    if force_color_branch_when_detected_from_black(tank, left_color, right_color, PICKUP_COLOR):
-        return STATE_APPROACH_PICKUP_TILE
-
     follow_line_step(tank, left_color, right_color, (PICKUP_COLOR, COLOR_BLACK))
     return STATE_APPROACH_PICKUP_TILE
 
@@ -296,9 +258,6 @@ def handle_approach_dropoff_tile_state(tank, left_color, right_color):
     if both_sensors_see_color(left_color, right_color, DROPOFF_COLOR):
         stop(tank)
         return STATE_DROPOFF_TILE_PROCEDURE
-
-    if force_color_branch_when_detected_from_black(tank, left_color, right_color, DROPOFF_COLOR):
-        return STATE_APPROACH_DROPOFF_TILE
 
     follow_line_step(tank, left_color, right_color, (DROPOFF_COLOR, COLOR_BLACK))
     return STATE_APPROACH_DROPOFF_TILE
