@@ -223,6 +223,8 @@ def move_grabber_up_to_limit(servo):
 
 
 def drive_forward_following_color_until_black(tank, left_color_sensor, right_color_sensor, line_color):
+    drive(tank, MOVE_FORWARD)
+    wait(0.3)
     start_time = time.time()
 
     while time.time() - start_time < DRIVE_BACK_TO_MAIN_LINE_MAX_TIME:
