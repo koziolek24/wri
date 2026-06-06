@@ -16,17 +16,17 @@ Repozytorium z kodem robota: https://github.com/koziolek24/wri
 Dokumentacja opisuje konstrukcję oraz oprogramowanie robota przygotowanego do realizacji dwóch zadań laboratoryjnych:
 
 - podążanie wzdłuż linii,
-- transport obiektu między kolorowymi punktami planszy.
+- transport obiektu między kolorowymi kafelkami planszy.
 
 Robot został wykonany z elementów LEGO Mindstorms EV3. Do jazdy wykorzystuje napęd różnicowy oparty o dwa silniki napędowe oraz dwa duże koła. Do wykrywania trasy i kolorowych zjazdów używa dwóch czujników koloru zamontowanych z przodu robota. Do realizacji zadania transportera wykorzystuje mechanizm chwytaka sterowany osobnym silnikiem średnim.
 
-Zadanie Linefollowera oraz zadanie Transportera zostały zakończone. W dokumentacji opisano konstrukcję, sposób wykrywania kolorów, strukturę programu, algorytm jazdy po linii, algorytm transportu obiektu oraz problemy napotkane podczas budowy i testowania robota.
+W dokumentacji opisano konstrukcję, sposób wykrywania kolorów, strukturę programu, algorytm jazdy po linii, algorytm transportu obiektu oraz problemy napotkane podczas budowy i testowania robota.
 
 ## 2. Opis konstrukcji robota
 
 ### 2.1. Baza jezdna
 
-Robot ma klasyczną bazę jezdną zbudowaną z elementów LEGO Technic oraz kontrolera EV3. Konstrukcja jest oparta o dwa duże koła napędowe umieszczone po bokach robota. Z tyłu znajduje się podpora stabilizująca, która pozwala utrzymać robota w poziomie i zmniejsza tarcie podczas skręcania.
+Robot ma klasyczną bazę jezdną zbudowaną z elementów LEGO Technic oraz kontrolera EV3. Konstrukcja jest oparta o dwa duże koła napędowe umieszczone po bokach robota. Z tyłu znajduje się podpora stabilizująca złożona z dwóch elementów z metalową kulką, która pozwala utrzymać robota w poziomie i zmniejsza tarcie podczas skręcania.
 
 Taki układ pozwala robotowi skręcać różnicowo, czyli przez ustawianie różnych prędkości dla lewego i prawego silnika. Dzięki temu robot może wykonywać zarówno łagodne korekty toru jazdy, jak i mocniejsze skręty używane podczas wjazdu w kolorowe odnogi.
 
@@ -66,7 +66,7 @@ Czujniki są zamontowane nisko przy przedniej części robota, blisko powierzchn
 - wykrywanie czarnej linii głównej,
 - wykrywanie kolorowych zjazdów,
 - rozpoznawanie, po której stronie robota znajduje się kolorowa odnoga,
-- sprawdzenie, czy robot wjechał całkowicie na kolorowy kafel.
+- sprawdzenie, czy robot wjechał całkowicie na kolorowy kafelek.
 
 Dwa czujniki umożliwiają prostą ocenę położenia robota względem linii. Gdy jeden czujnik widzi linię, a drugi jej nie widzi, program wykonuje korektę toru jazdy. Gdy robot znajduje kolorowy zjazd tylko jednym czujnikiem, program rozpoznaje stronę zjazdu i wykonuje skręt w odpowiednim kierunku.
 
@@ -212,13 +212,13 @@ Do rozpoznania strony zjazdu wykorzystywana jest funkcja `get_color_side`. Jeże
 
 Po wykryciu odpowiedniego zjazdu robot wykonuje skręt w stronę koloru i przechodzi do stanu dojazdu do kafla. Podczas dojazdu może śledzić zarówno kolorową odnogę, jak i czarną linię, ponieważ między rozjazdem a kolorowym kaflem może znajdować się dodatkowy fragment czarnej trasy.
 
-Warunkiem uznania, że robot dotarł na kolorowy kafel, jest wykrycie danego koloru przez oba czujniki jednocześnie.
+Warunkiem uznania, że robot dotarł na kolorowy kafelek, jest wykrycie danego koloru przez oba czujniki jednocześnie.
 
 ## 5. Opis algorytmów
 
 ### 5.1. Ogólna struktura programu
 
-Program jest napisany w Pythonie z użyciem biblioteki `ev3dev2`. Główna logika jest podzielona na kilka grup funkcji:
+Główna logika jest podzielona na kilka grup funkcji:
 
 - konfiguracja kolorów, stanów i ruchów,
 - odczyt kolorów z czujników,
@@ -238,9 +238,9 @@ Program działa jako prosta maszyna stanów. Dzięki temu logika zadania jest po
 | Stan                     | Znaczenie                                                             |
 | ------------------------ | --------------------------------------------------------------------- |
 | `follow_main_line`       | Robot jedzie po czarnej linii i szuka odpowiedniego kolorowego zjazdu |
-| `approach_pickup_tile`   | Robot jedzie w stronę kafla pobrania                                  |
+| `approach_pickup_tile`   | Robot jedzie w stronę kafelka pobrania                                |
 | `pickup_tile_procedure`  | Robot wykonuje procedurę pobrania obiektu                             |
-| `approach_dropoff_tile`  | Robot jedzie w stronę kafla odstawienia                               |
+| `approach_dropoff_tile`  | Robot jedzie w stronę kafelka odstawienia                             |
 | `dropoff_tile_procedure` | Robot wykonuje procedurę odstawienia obiektu                          |
 | `task_done`              | Robot kończy zadanie i zatrzymuje się                                 |
 
@@ -268,8 +268,6 @@ Podstawowy przebieg algorytmu:
 6. Powtórz pętlę.
 
 Pętla sterowania wykonuje się często, ponieważ podstawowy interwał oczekiwania wynosi `0.01 s`. Dzięki temu robot szybko reaguje na zmianę odczytów z czujników.
-
-Miejsce na finalny diagram Mermaid algorytmu Linefollowera:
 
 ```mermaid
 flowchart TD
@@ -311,8 +309,6 @@ Przebieg zadania:
 11. Robot dojeżdża do czerwonego kafla.
 12. Po wykryciu czerwonego koloru przez oba czujniki wykonuje procedurę odstawienia.
 13. Robot opuszcza chwytak i przechodzi do stanu `task_done`.
-
-Miejsce na finalny diagram Mermaid algorytmu Transportera:
 
 ```mermaid
 flowchart TD
@@ -401,7 +397,7 @@ Sprawdzane przypadki:
 | Przejazd przez okolice rozjazdów | Sprawdzenie, czy robot nie myli czarnej linii z kolorowym zjazdem | Zaliczone                       |
 | Pełny przejazd trasy             | Sprawdzenie całościowego działania Linefollowera                  | Zaliczone                       |
 
-Podczas testów najważniejsze było dobranie prędkości. Zbyt szybka jazda powodowała, że robot reagował za późno na zakrętach. Po ograniczeniu prędkości i zastosowaniu częstych odczytów czujników robot przejeżdżał trasę stabilnie.
+Podczas testów najważniejsze było dobranie prędkości. Zbyt szybka jazda powodowała, że robot nie reagował na zakrętach. Po ograniczeniu prędkości i zastosowaniu częstych odczytów czujników robot przejeżdżał trasę stabilnie.
 
 ### 6.2. Testy transportera
 
@@ -438,9 +434,7 @@ Podczas budowy i testowania robota pojawiło się kilka problemów konstrukcyjny
 
 Pierwszym problemem było ustawienie czujników koloru. Czujniki musiały być zamontowane możliwie nisko nad planszą, ale jednocześnie nie mogły zahaczać o powierzchnię. Zbyt duża wysokość pogarszała stabilność odczytów, a zbyt mała mogła powodować kontakt z planszą.
 
-Drugim problemem był wysunięty chwytak. Długa przednia część robota ułatwia pobieranie obiektu, ale zwiększa promień skrętu i wpływa na zachowanie robota przy wjeździe w odnogi. Wymagało to dobrania odpowiednich czasów skrętów.
-
-Trzecim problemem było utrzymanie stabilności przy podnoszeniu i opuszczaniu chwytaka. Ruch chwytaka zmienia rozkład masy robota, dlatego konstrukcja musiała być wystarczająco sztywna, aby nie zmieniać położenia czujników względem planszy.
+Drugim problemem było trafienie ciągle rozładowującego się komputera. Baterie musiały być wymieniane nawet czterokrotnie w ciągu laboratoriów, co mocno spowalniało testowanie robota.
 
 ### 7.2. Problemy programistyczne
 
@@ -449,6 +443,8 @@ Najważniejsze problemy programistyczne dotyczyły dobrania odpowiednich reakcji
 Drugim problemem był powrót z zielonego kafla na czarną linię. Robot po pobraniu obiektu musi zawrócić, jechać po kolorowym fragmencie i ponownie znaleźć czarną trasę główną. W tym celu dodano procedurę, która przez ograniczony czas szuka czarnej linii i zatrzymuje robota, jeśli jej nie znajdzie.
 
 Trzecim problemem było dobranie czasów ruchów wykonywanych bez ciągłego korygowania na podstawie czujników, takich jak obrót o około 180 stopni lub skręt po powrocie na linię. Te wartości musiały zostać dobrane eksperymentalnie na realnej planszy.
+
+Czwartym problemem było ciągłe gubienie linii przy większych prędkościach. Konieczne było ustanowienie kompromisu pomiędzy prędkością i dokładnością.
 
 ### 7.3. Problemy podczas testów
 
@@ -480,22 +476,3 @@ Możliwe dalsze usprawnienia projektu:
 - dokładniejsze sterowanie chwytakiem na podstawie pozycji silnika,
 - wykrywanie błędów przejazdu i próba kontrolowanego odzyskania linii,
 - obsługa większej liczby kolorów pobrania i odstawienia.
-
-## 9. Załączniki
-
-### 9.1. Kod źródłowy
-
-Kod źródłowy znajduje się w repozytorium podanym w sekcji 1.2.
-
-### 9.2. Diagramy
-
-W dokumentacji umieszczono wstępne diagramy Mermaid dla algorytmu Linefollowera oraz Transportera. W finalnej wersji można je rozszerzyć o pełny diagram maszyny stanów programu.
-
-### 9.3. Zdjęcia
-
-Zdjęcia konstrukcji znajdują się w katalogu `photos`:
-
-- `photos/robot1.jpg`,
-- `photos/robot2.jpg`,
-- `photos/robot3.jpg`,
-- `photos/robot4.jpg`.
