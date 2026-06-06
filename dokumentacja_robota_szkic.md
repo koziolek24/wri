@@ -434,7 +434,7 @@ Podczas budowy i testowania robota pojawiło się kilka problemów konstrukcyjny
 
 Pierwszym problemem było ustawienie czujników koloru. Czujniki musiały być zamontowane możliwie nisko nad planszą, ale jednocześnie nie mogły zahaczać o powierzchnię. Zbyt duża wysokość pogarszała stabilność odczytów, a zbyt mała mogła powodować kontakt z planszą.
 
-Drugim problemem było trafienie ciągle rozładowującego się komputera. Baterie musiały być wymieniane nawet czterokrotnie w ciągu laboratoriów, co mocno spowalniało testowanie robota.
+Drugim problemem było częste rozładowywanie się kontrolera EV3 lub akumulatorów używanych podczas testów. Baterie musiały być wymieniane nawet czterokrotnie w ciągu laboratoriów, co mocno spowalniało testowanie robota.
 
 ### 7.2. Problemy programistyczne
 
